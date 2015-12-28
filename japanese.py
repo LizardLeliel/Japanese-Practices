@@ -11,16 +11,31 @@ prefixTable = {
     "oh" : 155 
     }
 
+romajitable = {}
+
+# this will include things like "smalltsu" and "nn" but
+#  romajitable is intended for the romaji algorithm
+#  further below
+for eachKey in prefixTable:
+    romajitable[prefixTable[eachKey]] = eachKey
+
+
 # prefixTable.setdefault()
 # Mostly for readability. I.E. if x in vowels:
 vowels           = {"a": 0, "i": 1, "u": 2, "e": 3, "o": 4}
+japvowelstr      = "aiueo"
 doubleConsonants = ["k", "p", "s", "t"]
 beginningLetters = ["k", "s", "t", "n", "h", "m", "y", "r", "w",
                     "g", "z", "d", "p", "b", "j", "c", "f", "v"]
 secondLetters    = ["y", "h", "s"] # No, there isn't a lot
 pronouncination  = [".", ",", " "]
 
-transliterable = " abcdefghijklmnopqrstuvwxyz,."
+# Move these into a more appriopriate spot
+transliterableString = " abcdefghijklmnopqrstuvwxyz,."
+ycompoundstring      = "knhpbmrg"
+hcompoundstring      = ["sh", "ch"]
+nullcompoundstring   = "j"
+compounders          = "ゃゅょャュョ"
 
 # ゃ ゅ ょ
 hiraganaTable = [
@@ -101,9 +116,9 @@ katakanaTable = [
     "ヲ", "?" # katakanaTable[-1]
     ]
 
+# Short forms
 hir = hiraganaTable
 kat = katakanaTable
-
 
 # The Romaji is the string with latin characters to convert into
 #  either katakana or hiragana. Writing is either the dictionary
@@ -125,7 +140,7 @@ def parseJ(romaji, writing):
             japanese += writing[prefixTable[romaji[c]]]
             c += 1
             continue
-        if romaji[c] not in transliterable:
+        if romaji[c] not in transliterableString:
             japanese += romaji[c]
             c += 1
             continue
@@ -138,9 +153,9 @@ def parseJ(romaji, writing):
         if (
             c + 2 < len(romaji) and
             (japanese[-1] in pronouncination 
-                or japanese[-1] not in transliterable)  and
+                or japanese[-1] not in transliterableString)  and
             (romaji[c+2]  in pronouncination 
-                or romaji[c+2] not in transliterable)   and
+                or romaji[c+2] not in transliterableString)   and
             (romaji[c] + romaji[c+1]) == "wa" 
         ):
             japanese += writing[25] 
@@ -150,9 +165,9 @@ def parseJ(romaji, writing):
         elif (
             c + 1 < len(romaji) and
             (japanese[-1] in pronouncination 
-                or japanese[-1] not in transliterable)  and
+                or japanese[-1] not in transliterableString)  and
             (romaji[c+1]  in pronouncination 
-                or romaji[c+1] not in transliterable)   and
+                or romaji[c+1] not in transliterableString)   and
             romaji[c]    == "o"
         ):
             japanese += writing[155]
@@ -237,6 +252,72 @@ def parseJlist(romajiList, writing): # probably not useful.
         x.append(parseJ(eachstring, writing))
     return x
 
+def intoRomaji(kanaString):
+    returnstr = ""
+    i = 0
+
+    while i < len(kanaString):
+        character = kanaString[i]
+
+        if not (character in hir or character in kat):
+            returnstr += character
+            i += 1
+            continue
+
+        if character in hir:
+            charcode = hir.index(character)
+
+        elif character in kat:
+            charcode = kat.index(character)
+
+
+        if charcode < 145:
+            vowel     = japvowelstr[charcode % 5]
+            prefix    = romajitable[charcode - (charcode % 5)]
+
+            #ゃゅょャュョ
+            # Kya, kyo, shi, tsa, etc.. They'll need to be seperate
+            #  logic for new katakana "wi", "tu", "ti", etc.
+            if i + 1 != len(kanaString) and kanaString[i+1] in compounders:
+                nextvowel = kanaString[i+1]
+                nextpart  = "?"
+                firstpart  = "?"
+                if nextvowel == "ゃ" or nextvowel == "ャ":
+                    nextpart = "a"
+                elif nextvowel == "ゅ" or nextvowel == "ュ":
+                    nextpart = "u"
+                elif nextvowel == "ょ" or nextvowel == "ョ":
+                    nextpart = "o"
+                if prefix in ycompoundstring:
+                    firstpart = prefix[0] + "y"
+                elif prefix in hcompoundstring:
+                    firstpart = prefix[0] + "h"
+                elif prefix in nullcompoundstring:
+                    firstpart = prefix[0] 
+
+                returnstr += (firstpart + nextpart)
+                i += 1 # We'll want to skip over the small "y[auo]"!
+            else:
+                returnstr += (prefix + vowel)
+
+        # We came across a double consonant (such as the first
+        #  p in "nippon"). It requires a special algorithm
+        elif charcode == 153:
+            if i == len(kanaString) - 1: pass # End of string
+            else:
+                # This may return something other then s, p, b, or t
+                #  if the string input is not a correct kana string
+                returnstr += intoRomaji(kanaString[i+1])[0]
+        else:
+            returnstr += character
+
+        i += 1
+
+    return returnstr
+
+
+# create a dict from from a dictionary of "romaji": "english" pair
+#  that'll have the form "romaji": "writing (hiragana or katakana"
 def translationDict(romajiDictionary, writing):
     x = {}
     for eachstring in romajiDictionary:
@@ -281,7 +362,7 @@ def tests():
     # My name is Mike Solomon
     print (
         parseJ("Watashi no onamae wa ", hir) +
-        parseJ("Maiku soromoun ", kat) +
+        parseJ("Maiku soromon ", kat) +
         parseJ("desu.", hir)
     )
 
@@ -290,6 +371,13 @@ def tests():
 
     # One plus 2 is...\n ...3!
     print (parseJ("1 + 2 wa...\n ...san desu!", hir))
+
+    #つ
+    print(intoRomaji("るム123ッカャつカ つッ") + "\n")
+    print(intoRomaji("きゃ きゅ ちゅ しゅ ジャ") + "\n")
+    # There's a chance I may be forgetting how some new katakana works...
+    print(intoRomaji("ヴャ ヴ ヴィ") + "\n")
+
 
 if __name__ == "__main__":
     tests()
